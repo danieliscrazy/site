@@ -7,9 +7,7 @@ import Footer from '../components/footer'
 import ForceTheme from '../components/force-theme'
 import StickerForm from '../components/stickers/request-form'
 
-import fs from 'fs'
-import path from 'path'
-import { startCase } from 'lodash'
+import axios from 'axios'
 
 const color = '#EC37AD'
 
@@ -132,7 +130,7 @@ const StickersPage = ({ stickers = [] }) => [
       <Grid columns={[2, 3]} gap={[3, 4]} mt={[3, 4]}>
         {stickers.map(st => (
           <Flex
-            key={st}
+            key={st.name || st.image}
             sx={{
               flexDirection: 'column',
               alignItems: 'center',
@@ -150,13 +148,13 @@ const StickersPage = ({ stickers = [] }) => [
             }}
           >
             <Image
-              src={`/stickers/${st}`}
+              src={st.image}
               width={128}
               height={128}
-              alt={st.split('.')[0]}
+              alt={st.name || ''}
             />
             <Text as="span" variant="caption" sx={{ fontSize: 2, mt: [2, 3] }}>
-              {customStartCase(st)}
+              {customStartCase(st.name || '')}
             </Text>
           </Flex>
         ))}
@@ -185,10 +183,48 @@ const StickersPage = ({ stickers = [] }) => [
 
 export default StickersPage
 
-export const getStaticProps = () => {
-  const stickersDir = path.join(process.cwd(), 'public', 'stickers')
-  const stickers = fs
-    .readdirSync(stickersDir)
-    .filter(sticker => sticker !== 'hero.jpg')
+export const getStaticProps = async () => {
+  // Fetch all records from the Airtable base/table provided.
+  // Uses process.env.AIRTABLE_API_KEY for authentication.
+  const baseUrl =
+    'https://api.airtable.com/v0/appptawPLliuvjDZp/Full%20Sticker%20DB'
+  const headers = {
+    Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`
+  }
+
+  const stickers = []
+  try {
+    let offset = undefined
+    do {
+      const params = offset ? { offset } : {}
+      const res = await axios.get(baseUrl, { headers, params })
+      const body = res.data
+      if (Array.isArray(body.records)) {
+        body.records.forEach(r => {
+          const fields = r.fields || {}
+          const name = fields['Sticker Name'] || fields['Name'] || ''
+          let image = ''
+          const imgField = fields['Sticker Image Link']
+          if (Array.isArray(imgField) && imgField.length) {
+            const first = imgField[0]
+            if (typeof first === 'object' && first.url) image = first.url
+            else if (typeof first === 'string') image = first
+          } else if (typeof imgField === 'string') {
+            image = imgField
+          }
+          // Only include if we have an image URL
+          if (image) stickers.push({ name, image })
+        })
+      }
+      offset = body.offset
+    } while (offset)
+  } catch (err) {
+    // On error, log and return empty list so build doesn't fail silently.
+    // Next will surface build warnings; in production consider failing the build
+    // or providing a fallback.
+    // eslint-disable-next-line no-console
+    console.error('Error fetching stickers from Airtable:', err.message || err)
+  }
+
   return { props: { stickers } }
 }
