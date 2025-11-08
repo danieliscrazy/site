@@ -18,7 +18,31 @@ function customStartCase(st) {
     .replace(/\b\w/g, char => char.toUpperCase());
 }
 
-const StickersPage = ({ stickers = [] }) => [
+import { useState, useMemo } from 'react'
+
+const StickersPage = ({ stickers = [] }) => {
+  const [search, setSearch] = useState('')
+  const filtered = useMemo(() => {
+    if (!search) return stickers
+    const q = search.toLowerCase()
+    return stickers.filter(st =>
+      (st.name || '').toLowerCase().includes(q) ||
+      (st.artist || '').toLowerCase().includes(q) ||
+      (st.event || '').toLowerCase().includes(q)
+    )
+  }, [search, stickers])
+
+  function getTitle(st) {
+    const n = st.name || ''
+    const a = st.artist
+    const e = st.event
+    if (a && e) return `${n} made by ${a} for ${e}`
+    if (a) return `${n} made by ${a}`
+    if (e) return `${n} for ${e}`
+    return n
+  }
+
+  return [
   <Box as="main" key="main" sx={{ textAlign: 'center' }}>
     <ForceTheme theme="dark" />
     <Nav dark />
@@ -127,8 +151,24 @@ const StickersPage = ({ stickers = [] }) => [
       <Heading as="h2" variant="title" color="white">
         Gotta collect ‘em all.
       </Heading>
+      <Box as="form" mb={4} sx={{ textAlign: 'center' }} onSubmit={e => e.preventDefault()}>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search stickers"
+          style={{
+            padding: '0.5rem 1rem',
+            fontSize: '1rem',
+            borderRadius: '8px',
+            border: '1px solid #ccc',
+            width: 'min(100%, 400px)'
+          }}
+          aria-label="Search stickers"
+        />
+      </Box>
       <Grid columns={[2, 3]} gap={[3, 4]} mt={[3, 4]}>
-        {stickers.map(st => (
+        {filtered.map(st => (
           <Flex
             key={st.name || st.image}
             sx={{
@@ -152,6 +192,7 @@ const StickersPage = ({ stickers = [] }) => [
               width={128}
               height={128}
               alt={st.name || ''}
+              title={getTitle(st)}
             />
             <Text as="span" variant="caption" sx={{ fontSize: 2, mt: [2, 3] }}>
               {customStartCase(st.name || '')}
@@ -179,7 +220,8 @@ const StickersPage = ({ stickers = [] }) => [
 */}
   </Box>,
   <Footer dark key="footer" />
-]
+  ]
+}
 
 export default StickersPage
 
@@ -212,8 +254,10 @@ export const getStaticProps = async () => {
           } else if (typeof imgField === 'string') {
             image = imgField
           }
+          const artist = fields['Artist'] || ''
+          const event = fields['Event'] || ''
           // Only include if we have an image URL
-          if (image) stickers.push({ name, image })
+          if (image) stickers.push({ name, image, artist, event })
         })
       }
       offset = body.offset
@@ -225,6 +269,9 @@ export const getStaticProps = async () => {
     // eslint-disable-next-line no-console
     console.error('Error fetching stickers from Airtable:', err.message || err)
   }
+
+  // Sort alphabetically by name (case-insensitive)
+  stickers.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
 
   return { props: { stickers } }
 }
